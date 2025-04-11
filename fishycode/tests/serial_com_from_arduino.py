@@ -13,4 +13,5 @@ try:
             line = ser.readline().decode('utf-8')
             print(line)
 except KeyboardInterrupt:
+    print("connection severed")
     ser.close()

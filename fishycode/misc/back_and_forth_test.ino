@@ -2,7 +2,7 @@
 
 Servo esc_1;  // create servo object to control the PWM signal
 Servo esc_2;  // for controlling a second motor via a second esc
-hasRun = 0;
+int hasRun = 0;
 
 void setup() {
   esc_1.attach(9);  // make sure to use a PWM capable pin
@@ -10,7 +10,7 @@ void setup() {
 }
 
 void loop() {  
-    if hasRun = 0 {
+    if (hasRun = 0) {
         set_esc_power(0);
         delay(500);
         set_esc_power(40);
@@ -26,6 +26,7 @@ void loop() {
         set_esc_power(0);
         delay(500);
     }
+    hasRun = 1;
   
 }
 

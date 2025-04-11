@@ -4,12 +4,14 @@ import time
 # Adjust the port and baud rate
 ser = serial.Serial('/dev/ttyACM0', 19200, timeout=1.0)
 time.sleep(2)  # Wait for Arduino to reset
-
+ser.reset_input_buffer()
 print("Connected to Arduino")
 
 # Send trigger
 ser.write(b"RUN\n")
 print("Sent RUN command to Arduino")
+
+time.sleep(2)
 
 # Read the response
 try:
