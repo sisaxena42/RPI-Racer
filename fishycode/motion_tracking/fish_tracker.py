@@ -13,8 +13,8 @@ except serial.SerialException:
     exit()
 
 # === HSV Bounds (You may need to tweak these for your fish) ===
-lower_hsv = np.array([77, 163, 12])
-upper_hsv = np.array([94, 255, 100])
+lower_hsv = np.array([0, 106, 0])
+upper_hsv = np.array([97, 255, 115])
 
 # === Camera Setup ===
 camera = cv2.VideoCapture(0)
