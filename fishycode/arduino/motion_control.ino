@@ -6,8 +6,8 @@ Servo drive_motor;
 const int STEERING_PIN = 14;
 const int MOTOR_PIN = 9;
 
-const int FRAME_WIDTH = 320;
-const int FRAME_HEIGHT = 240;
+const int FRAME_WIDTH  = 1280;
+const int FRAME_HEIGHT = 1080;
 
 const int MOTOR_SPEED = 40;
 
