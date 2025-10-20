@@ -48,15 +48,15 @@ void handleMovement(int x, int y) {
   // Movement mapping
   switch (row) {
     case 0:  // Top row
-      setDrivePower(MOTOR_SPEED);
+      setDrivePower(-MOTOR_SPEED);
       steerByColumn(col, true); // true = forward turn
       break;
     case 1:  // Middle row
-      setDrivePower(MOTOR_SPEED);
+      setDrivePower(-MOTOR_SPEED);
       steerByColumn(col, false);
       break;
     case 2:  // Bottom row
-      setDrivePower(-MOTOR_SPEED);
+      setDrivePower(MOTOR_SPEED);
       steerByColumn(col, false);
       break;
   }
