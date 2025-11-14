@@ -13,13 +13,15 @@ except serial.SerialException:
     exit()
 
 # === HSV Bounds (You may need to tweak these for your fish) ===
-lower_hsv = np.array([0, 106, 0])
-upper_hsv = np.array([97, 255, 115])
+lower_hsv = np.array([0,170 , 25])
+upper_hsv = np.array([179, 255, 255])
 
 # === Camera Setup ===
 camera = cv2.VideoCapture(0)
 FRAME_WIDTH = int(camera.get(cv2.CAP_PROP_FRAME_WIDTH))
 FRAME_HEIGHT = int(camera.get(cv2.CAP_PROP_FRAME_HEIGHT))
+camera.set(3, 640)
+camera.set(4, 480)
 
 if not camera.isOpened():
     print("Error: Camera not detected")

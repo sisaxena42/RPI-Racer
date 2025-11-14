@@ -9,7 +9,7 @@ print("Connected to Arduino")
 
 # Send trigger
 ser.write(b"RUN\n")
-print("Sent RUN command to Arduino")
+print("Sent RUN command to Arduino") 
 
 time.sleep(2)
 
@@ -19,6 +19,7 @@ try:
         if ser.in_waiting > 0:
             line = ser.readline().decode("utf-8").strip()
             print(f"[Arduino] {line}")
+            ser.reset_input_buffer()
             if line == "Done":
                 break
 except KeyboardInterrupt:

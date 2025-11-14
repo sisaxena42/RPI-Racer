@@ -9,7 +9,7 @@ def connect_to_arduino():
             if 'ttyACM' in port.device:
                 try:
                     ser = serial.Serial(port.device, 19200, timeout=1.0)
-                    time.sleep(2)  # Give time to reset
+                    time.sleep(5)  # Give time to reset
                     print(f"Connected to {port.device}")
                     return ser
                 except serial.SerialException:
