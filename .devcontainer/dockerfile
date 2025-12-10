@@ -22,15 +22,21 @@ RUN apt-get update && apt-get install -y \
     libatlas-base-dev \
     gfortran \
     libhdf5-dev \
-    arduino \
-    arduino-core \
+    #arduino \
+    #arduino-core \
     && rm -rf /var/lib/apt/lists/*
 
 # Python dependencies
 RUN pip install --no-cache-dir opencv-python
+RUN pip install --no-cache-dir opencv-python numpy
 
 # Create non-root user (VS Code expects a "vscode" user)
 RUN useradd -m vscode && echo "vscode ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# Arduino 
+# Install Arduino CLI
+RUN curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
+ENV PATH="/root/bin:${PATH}"
 
 USER vscode
 WORKDIR /home/vscode/app
