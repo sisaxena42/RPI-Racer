@@ -18,6 +18,14 @@ CAMERA_INDEX = 0
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
 
+# Camera alignment
+FLIP_X = False      # mirror left/right
+FLIP_Y = False      # mirror up/down
+ROTATE = 0          # 0, 90, 180, 270 degrees
+
+# Steering alignment (pixels)
+X_OFFSET = 0        # shift fish_x by this many pixels (positive moves right)
+
 # HSV Color Bounds for Fish Detection
 LOWER_HSV = np.array([0, 170, 25])
 UPPER_HSV = np.array([179, 255, 255])
@@ -43,6 +51,21 @@ LOOP_DELAY = 0.02  # seconds between iterations
 # ============================================
 # GLOBAL STATE
 # ============================================
+
+def align_frame(frame):
+    if ROTATE == 90:
+        frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+    elif ROTATE == 180:
+        frame = cv2.rotate(frame, cv2.ROTATE_180)
+    elif ROTATE == 270:
+        frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+
+    if FLIP_X:
+        frame = cv2.flip(frame, 1)  # horizontal mirror
+    if FLIP_Y:
+        frame = cv2.flip(frame, 0)  # vertical flip
+    return frame
+
 
 class CarState:
     def __init__(self):
@@ -297,7 +320,7 @@ def main():
             if not ret:
                 print("Error: Failed to grab frame")
                 break
-            
+            frame = align_frame(frame)
             # Detect fish
             frame, mask, fish_detected = detect_fish(frame, state)
             
