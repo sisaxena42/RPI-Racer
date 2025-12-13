@@ -352,8 +352,8 @@ def main():
                 speed_estimate *= speed_factor
             
             # Estimate steering angle from fish x position (0-180 degrees, 90 = straight)
-            # Map fish_x from 0-FRAME_WIDTH to steering angle 0-180
-            steering_angle = (fish_x / FRAME_WIDTH) * 180.0
+            # Map smoothed_fish_x from 0-FRAME_WIDTH to steering angle 0-180
+            steering_angle = (state.smoothed_fish_x / FRAME_WIDTH) * 180.0
             
             # Update position using dead reckoning
             state.update_position(speed_estimate, steering_angle, dt)
