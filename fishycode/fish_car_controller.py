@@ -369,6 +369,28 @@ def main():
             cv2.line(frame, (0, FRAME_HEIGHT // 3), (FRAME_WIDTH, FRAME_HEIGHT // 3), (100, 100, 100), 1)
             cv2.line(frame, (0, 2 * FRAME_HEIGHT // 3), (FRAME_WIDTH, 2 * FRAME_HEIGHT // 3), (100, 100, 100), 1)
             
+            # Draw directional labels
+            label_color = (255, 255, 0)  # Cyan color for visibility
+            label_font = cv2.FONT_HERSHEY_SIMPLEX
+            label_scale = 0.8
+            label_thickness = 2
+            
+            # FRONT label (top of frame)
+            cv2.putText(frame, "FRONT", (FRAME_WIDTH // 2 - 50, 25),
+                       label_font, label_scale, label_color, label_thickness)
+            
+            # BACK label (bottom of frame)
+            cv2.putText(frame, "BACK", (FRAME_WIDTH // 2 - 40, FRAME_HEIGHT - 10),
+                       label_font, label_scale, label_color, label_thickness)
+            
+            # LEFT label (left side)
+            cv2.putText(frame, "LEFT", (10, FRAME_HEIGHT // 2),
+                       label_font, label_scale, label_color, label_thickness)
+            
+            # RIGHT label (right side)
+            cv2.putText(frame, "RIGHT", (FRAME_WIDTH - 90, FRAME_HEIGHT // 2),
+                       label_font, label_scale, label_color, label_thickness)
+            
             # Show frames
             cv2.imshow("Fish Car - Tracking", frame)
             cv2.imshow("Fish Car - Mask", mask)
