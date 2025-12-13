@@ -27,13 +27,10 @@ const int MAX_REV_SPEED = 20;
 const int MIN_MOTOR_SPEED = 6;        // Minimum speed to overcome friction
 const int IDLE_SPEED = 0;              // Stopped
 
-//// ESC calibration (measured from your receiver)
-//const int ESC_MIN  = 1264;  // full reverse
-//const int ESC_NEUT = 1388;  // neutral
-//const int ESC_MAX  = 1530;  // full forward
-//
-//// Reverse behavior tuning
-//const unsigned long NEUTRAL_BEFORE_REVERSE_MS = 400;
+// ESC calibration (measured from your receiver)
+const int ESC_MIN  = 1064;  // full reverse (from backwards.ino)
+const int ESC_NEUT = 1388;  // neutral
+const int ESC_MAX  = 1530;  // full forward
 
 // Steering settings (servo angles in degrees)
 const int STEERING_CENTER = 90;        // Straight ahead
@@ -215,6 +212,15 @@ void calculateTargetMovement(int x, int y, float speed_factor, float boundary_fa
   
   target_speed = base_speed;
   
+  // Debug output
+  Serial.print("Grid: (");
+  Serial.print(col);
+  Serial.print(",");
+  Serial.print(row);
+  Serial.print(") Speed: ");
+  Serial.print(target_speed);
+  Serial.print(" Steering: ");
+  
   // Calculate steering based on column
   // Use gentler turns for smoother motion
   switch (col) {
@@ -239,6 +245,8 @@ void calculateTargetMovement(int x, int y, float speed_factor, float boundary_fa
       target_steering = STEERING_RIGHT;
     }
   }
+  
+  Serial.println(target_steering);
 }
 
 // ============================================
@@ -289,9 +297,18 @@ void setDrivePower(int power) {
   // Constrain power to safe range
   power = constrain(power, -100, 100);
   
-  // Map power (-100 to 100) to ESC microseconds (1050 to 1950)
-  // 1500 is neutral/stopped
-  int signal = map(power, -100, 100, 1250, 1750);
+  // Map power (-100 to 100) to ESC microseconds using calibrated values
+  // ESC_NEUT (1388) is neutral/stopped
+  int signal;
+  if (power == 0) {
+    signal = ESC_NEUT;
+  } else if (power > 0) {
+    // Forward: map 1 to 100 => ESC_NEUT to ESC_MAX
+    signal = map(power, 0, 100, ESC_NEUT, ESC_MAX);
+  } else {
+    // Reverse: map -100 to -1 => ESC_MIN to ESC_NEUT
+    signal = map(power, -100, 0, ESC_MIN, ESC_NEUT);
+  }
   
   drive_motor.writeMicroseconds(signal);
 }
