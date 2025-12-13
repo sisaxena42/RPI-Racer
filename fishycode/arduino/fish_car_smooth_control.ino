@@ -1,4 +1,4 @@
-th#include <Servo.h>
+#include <Servo.h>
 
 // ============================================
 // HARDWARE CONFIGURATION
@@ -189,19 +189,19 @@ void calculateTargetMovement(int x, int y, float speed_factor, float boundary_fa
   bool moving_backward = false;
   
   switch (row) {
-    case 0:  // Top row - move backward
-      base_speed = -MAX_MOTOR_SPEED;
-      moving_backward = true;
-      break;
-      
-    case 1:  // Middle row - move backward slowly
-      base_speed = -MAX_MOTOR_SPEED* 0.7;
-      moving_backward = true;
-      break;
-      
-    case 2:  // Bottom row - move forward
+    case 0:  // Top row - fish is far, move forward
       base_speed = MAX_MOTOR_SPEED;
       moving_backward = false;
+      break;
+      
+    case 1:  // Middle row - move forward slowly
+      base_speed = MAX_MOTOR_SPEED * 0.7;
+      moving_backward = false;
+      break;
+      
+    case 2:  // Bottom row - fish is close, move backward
+      base_speed = -MAX_MOTOR_SPEED;
+      moving_backward = true;
       break;
   }
   
@@ -218,35 +218,25 @@ void calculateTargetMovement(int x, int y, float speed_factor, float boundary_fa
   // Calculate steering based on column
   // Use gentler turns for smoother motion
   switch (col) {
-    case 0:  // Left column
-      if (moving_backward) {
-        // When moving backward, steering is reversed
-        target_steering = STEERING_SLIGHT_RIGHT;
-      } else {
-        target_steering = STEERING_SLIGHT_LEFT;
-      }
+    case 0:  // Left column - always turn left
+      target_steering = STEERING_SLIGHT_LEFT;
       break;
       
     case 1:  // Center column
       target_steering = STEERING_CENTER;
       break;
       
-    case 2:  // Right column
-      if (moving_backward) {
-        // When moving backward, steering is reversed
-        target_steering = STEERING_SLIGHT_LEFT;
-      } else {
-        target_steering = STEERING_SLIGHT_RIGHT;
-      }
+    case 2:  // Right column - always turn right
+      target_steering = STEERING_SLIGHT_RIGHT;
       break;
   }
   
   // Apply sharper turns only if fish is in corner regions
   if (row == 0 || row == 2) {  // Top or bottom row
-    if (col == 0) {  // Left corner
-      target_steering = moving_backward ? STEERING_RIGHT : STEERING_LEFT;
-    } else if (col == 2) {  // Right corner
-      target_steering = moving_backward ? STEERING_LEFT : STEERING_RIGHT;
+    if (col == 0) {  // Left corner - always turn left
+      target_steering = STEERING_LEFT;
+    } else if (col == 2) {  // Right corner - always turn right
+      target_steering = STEERING_RIGHT;
     }
   }
 }
