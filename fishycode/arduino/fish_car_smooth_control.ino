@@ -1,4 +1,4 @@
-#include <Servo.h>
+th#include <Servo.h>
 
 // ============================================
 // HARDWARE CONFIGURATION
@@ -22,9 +22,18 @@ const int FRAME_HEIGHT = 480;
 // ============================================
 
 // Speed settings (percentage of max power)
-const int MAX_MOTOR_SPEED = 35;        // Maximum speed for safety
-const int MIN_MOTOR_SPEED = 15;        // Minimum speed to overcome friction
+const int MAX_MOTOR_SPEED = 7;        // Maximum speed for safety
+const int MAX_REV_SPEED = 20;
+const int MIN_MOTOR_SPEED = 6;        // Minimum speed to overcome friction
 const int IDLE_SPEED = 0;              // Stopped
+
+//// ESC calibration (measured from your receiver)
+//const int ESC_MIN  = 1264;  // full reverse
+//const int ESC_NEUT = 1388;  // neutral
+//const int ESC_MAX  = 1530;  // full forward
+//
+//// Reverse behavior tuning
+//const unsigned long NEUTRAL_BEFORE_REVERSE_MS = 400;
 
 // Steering settings (servo angles in degrees)
 const int STEERING_CENTER = 90;        // Straight ahead
@@ -74,7 +83,10 @@ void setup() {
   
   // Set initial safe state
   steering_servo.write(STEERING_CENTER);
-  setDrivePower(0);
+  //setDrivePower(0);
+//  drive_motor.writeMicroseconds(ESC_NEUT);
+  delay(3000); // allow ESC arm
+
   
   Serial.println("Fish Car Smooth Control Initialized");
   Serial.println("Waiting for commands...");
@@ -183,7 +195,7 @@ void calculateTargetMovement(int x, int y, float speed_factor, float boundary_fa
       break;
       
     case 1:  // Middle row - move backward slowly
-      base_speed = -MAX_MOTOR_SPEED * 0.7;
+      base_speed = -MAX_MOTOR_SPEED* 0.7;
       moving_backward = true;
       break;
       
@@ -250,7 +262,7 @@ void smoothTransition() {
   
   // Limit maximum change per iteration
   if (abs(speed_change) > MAX_SPEED_CHANGE) {
-    speed_change = (speed_change > 0) ? MAX_SPEED_CHANGE : -MAX_SPEED_CHANGE;
+    speed_change = (speed_change > 0) ? MAX_SPEED_CHANGE : -MAX_MOTOR_SPEED;
   }
   
   current_speed += speed_change;
@@ -289,10 +301,59 @@ void setDrivePower(int power) {
   
   // Map power (-100 to 100) to ESC microseconds (1050 to 1950)
   // 1500 is neutral/stopped
-  int signal = map(power, -100, 100, 1050, 1950);
+  int signal = map(power, -100, 100, 1250, 1750);
   
   drive_motor.writeMicroseconds(signal);
 }
+//int powerToPulse(int power) {
+//  power = constrain(power, -100, 100);
+//  if (power == 0) return ESC_NEUT;
+//
+//  if (power > 0) {
+//    // 0..100 => ESC_NEUT..ESC_MAX
+//    long up = ESC_MAX - ESC_NEUT;
+//    return ESC_NEUT + (up * power) / 100;
+//  } else {
+//    // -100..0 => ESC_MIN..ESC_NEUT
+//    long down = ESC_NEUT - ESC_MIN;
+//    int mag = -power;
+//    return ESC_NEUT - (down * mag) / 100;
+//  }
+//}
+//
+//void setDrivePower1(int power) {
+//  static bool wasForward = false;
+//  static unsigned long lastNeutralTime = 0;
+//
+//  power = constrain(power, -100, 100);
+//
+//  // Track neutral time
+//  if (power == 0) {
+//    lastNeutralTime = millis();
+//    drive_motor.writeMicroseconds(ESC_NEUT);
+//    wasForward = false; // treat as reset
+//    return;
+//  }
+//
+//  // If requesting reverse, enforce "neutral gap" first (car ESC safety)
+//  if (power < 0) {
+//    // If we recently were forward OR haven?t held neutral long enough, force neutral first
+//    if (wasForward || (millis() - lastNeutralTime < NEUTRAL_BEFORE_REVERSE_MS)) {
+//      drive_motor.writeMicroseconds(ESC_NEUT);
+//      return; // wait until neutral has been held long enough
+//    }
+//  }
+//
+//  // If requesting forward, mark forward state
+//  if (power > 0) {
+//    wasForward = true;
+//  }
+//
+//  // Output pulse
+//  int signal = powerToPulse(power);
+//  drive_motor.writeMicroseconds(signal);
+//}
+
 
 // ============================================
 // UTILITY FUNCTIONS
