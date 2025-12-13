@@ -1,99 +1,419 @@
-# RPI-Racer (Model 2)
+# Fish Car - Fish Operated Vehicle (FOV)
 
-The Fish Operated Vehicle (FOV) is an RC chassis that lets a live fish “drive” the car. A camera mounted above the tank tracks the fish, a Raspberry Pi translates the motion into steering/throttle commands, and an Arduino pushes those commands to the servo and motor/ESC combo. Model 2 (this repo) is the current working build; Model 1 will be documented when that variant is ready.
-
----
-
-## System overview
-
-- **Camera:** Mounted above the tank, streams live video to the Raspberry Pi so we always know where the fish is.
-- **Raspberry Pi:** Runs the computer-vision stack under `fishycode/motion_tracking`. It isolates the fish by color (HSV filtering), finds the centroid, and streams the `(x,y)` position over serial.
-- **Arduino:** Runs `fishycode/arduino/motion_control.ino`. It receives the Pi coordinates, figures out which region of the frame the fish lives in, and converts that to servo angle plus motor power.
-- **Servo:** Tied to the front knuckles; `Servo.write()` angles between roughly 60° (full left) and 120° (full right).
-- **Motor + Electronic Speed Controller:** ESC interprets the Arduino PWM, spins the motor forward/backward, and therefore moves the car.
-- **Receiver:** Powers both the servo and ESC/BEC and keeps the signaling tidy; it is the shared reference for all PWM signals even though the Pi/Arduino now dictate the values.
-- **Lidar:** _Placeholder — document lidar wiring/usage here once the integration details are finalized._
-
-All control intelligence is on the Pi, while the Arduino provides deterministic, low-jitter PWM for the servo and ESC.
+A robotic RC car controlled by a live fish swimming in a tank. The fish's position is tracked via computer vision, translated into movement commands by a Raspberry Pi, and executed by an Arduino controlling the car's steering and motor.
 
 ---
 
-## Repository layout
+## 🎯 Project Overview
+
+The Fish Car uses real-time computer vision to track a fish's position in a tank and translates that position into vehicle control commands. The system features:
+
+- **Computer Vision Tracking**: HSV color-based fish detection with smoothing
+- **Safety Systems**: LIDAR obstacle detection and virtual boundary enforcement
+- **Smooth Control**: Gradual acceleration/deceleration and steering transitions
+- **Dead Reckoning**: Position estimation for boundary management
+- **Real-time Processing**: 50Hz control loop with minimal latency
+
+---
+
+## 🏗️ System Architecture
+
+```
+┌─────────────┐
+│   Camera    │ (Above tank, pointing down)
+└──────┬──────┘
+       │ USB
+       ▼
+┌─────────────────────────────────────┐
+│      Raspberry Pi 4/5               │
+│  • Computer Vision (OpenCV)         │
+│  • Fish Detection & Tracking        │
+│  • LIDAR Processing                 │
+│  • Safety Logic                     │
+│  • Command Generation               │
+└──────┬──────────────────────────────┘
+       │ USB Serial (19200 baud)
+       ▼
+┌─────────────────────────────────────┐
+│         Arduino Uno                 │
+│  • Command Parsing                  │
+│  • Smooth Transitions               │
+│  • PWM Signal Generation            │
+└──────┬──────────────────────────────┘
+       │
+       ├─────► Servo (Pin 14) ────► Front Wheels
+       │
+       └─────► ESC (Pin 9) ──────► DC Motor
+```
+
+### Hardware Components
+
+- **Raspberry Pi 4/5**: Runs Python control software with OpenCV
+- **Arduino Uno**: Generates precise PWM signals for servo and ESC
+- **USB Camera**: Mounted above tank for fish tracking (640×480 @ 30fps)
+- **Hokuyo UST-10LX LIDAR**: Front-facing obstacle detection (270° FOV)
+- **Steering Servo**: Controls front wheel angle (60°-120° range)
+- **Brushless DC Motor + ESC**: Drives rear wheels (forward/reverse)
+- **RC Receiver**: Power distribution and signal reference
+- **LiPo Battery**: Powers entire system via ESC/BEC
+
+---
+
+## 📁 Repository Structure
 
 ```
 fishycode/
-├─ arduino/            → Motion control firmware that drives the servo and ESC
-├─ motion_tracking/    → Pi-side computer vision and serial output
-├─ tests/              → Small host utilities for talking to the Arduino/ESC
-└─ misc/               → One-off Arduino sketches used during bring-up
+├── fish_car_controller.py          # Main Pi control script (CURRENT)
+├── arduino/
+│   ├── fish_car_smooth_control.ino # Main Arduino firmware (CURRENT)
+│   └── motion_control.ino          # Legacy Arduino firmware
+├── motion_tracking/
+│   ├── fish_tracker.py             # Simplified tracking script
+│   ├── tracking_fish.py            # Alternative tracker (9600 baud)
+│   └── color_selection.py          # HSV calibration tool
+├── tests/
+│   ├── lidar_test.py               # LIDAR connection test
+│   ├── lidar_stop_car.py           # LIDAR safety test
+│   ├── motor_test.py               # ESC calibration test
+│   ├── servo_test.py               # Servo range test
+│   └── serial_*.py                 # Serial communication tests
+└── misc/
+    └── *.ino                       # Hardware bring-up sketches
 ```
 
 ---
 
-## Control loop at a glance
+## 🔄 Control Flow
 
-1. **Camera capture:** `fish_tracker.py` grabs frames from `/dev/video0` (or your configured device) at 640×480.
-2. **Fish detection:** The frame is converted to HSV, thresholded according to your calibrated color bounds (`color_selection.py` helps dial these in), and the largest contour is assumed to be the fish.
-3. **Coordinate broadcast:** The contour’s centroid becomes `center_x,center_y`, which the Pi streams to the Arduino over USB serial at 19.2 kbps.
-4. **Region mapping:** The Arduino divides the 1280×1080 virtual frame into a 3×3 grid. Depending on the sector the fish occupies, it chooses one of nine behaviors (idle, turn left/right while moving forward/back, etc.).
-5. **Actuation:** `steering_servo.write()` angles the wheels, while `drive_motor.writeMicroseconds()` sends ESC pulses mapped from -100–100% power to 1050–1950 µs.
-6. **Vehicle motion:** The ESC powers the DC motor, the receiver distributes power/signals to both the servo and ESC, and the car mirrors the fish’s heading.
+### 1. Fish Detection (Raspberry Pi)
+```python
+Camera → HSV Conversion → Color Thresholding → Contour Detection → Centroid Calculation
+```
 
-When the fish remains in the central sector, power drops to zero and the servo straightens—effectively parking the car until the fish swims elsewhere.
+- Captures 640×480 frames at ~30 FPS
+- Converts to HSV color space for robust color detection
+- Applies calibrated HSV bounds to isolate fish
+- Finds largest contour and calculates centroid
+- Applies exponential smoothing to reduce jitter
+
+### 2. Safety Checks (Raspberry Pi)
+```python
+LIDAR Scan → Front Obstacle Detection → Virtual Boundary Check → Speed Adjustment
+```
+
+- **LIDAR**: Scans ±30° in front, stops if obstacle < 0.7m
+- **Virtual Boundary**: Tracks position via dead reckoning, enforces 3m radius
+- **Speed Reduction**: Gradually reduces speed when approaching boundary (2.5m-3.0m)
+
+### 3. Command Generation (Raspberry Pi)
+```python
+Fish Position → Grid Mapping (3×3) → Speed/Steering Calculation → Serial Transmission
+```
+
+Command format: `x,y,speed_factor,boundary_factor,obstacle\n`
+- `x,y`: Fish position in pixels (0-640, 0-480)
+- `speed_factor`: 0.0-1.0 (safety-adjusted speed multiplier)
+- `boundary_factor`: 0.0-1.0 (proximity to boundary)
+- `obstacle`: 0=clear, 1=obstacle detected
+
+### 4. Motion Control (Arduino)
+```arduino
+Serial Parse → Grid Sector → Target Calculation → Smooth Transition → PWM Output
+```
+
+**Grid Mapping (3×3):**
+```
+┌─────────┬─────────┬─────────┐
+│ FWD+L   │ FORWARD │ FWD+R   │  Top: Fish far → Move forward
+├─────────┼─────────┼─────────┤
+│ SLOW+L  │  IDLE   │ SLOW+R  │  Mid: Fish medium → Slow forward
+├─────────┼─────────┼─────────┤
+│ REV+L   │ REVERSE │ REV+R   │  Bot: Fish close → Move backward
+└─────────┴─────────┴─────────┘
+  Left      Center     Right
+```
+
+**Smoothing:**
+- Speed: 15% change per iteration (prevents jerky acceleration)
+- Steering: 20% change per iteration (smooth turns)
+- Max changes: ±5% speed, ±3° steering per 20ms loop
+
+**ESC Calibration:**
+- Neutral: 1388 µs (stopped)
+- Forward: 1388-1530 µs (max 7% power for safety)
+- Reverse: 1064-1388 µs (max 20% power)
 
 ---
 
-## Software modules
+## 🚀 Getting Started
 
-### Motion tracking (`fishycode/motion_tracking/`)
-- `color_selection.py`: Opens OpenCV trackbars so you can interactively find HSV ranges that isolate your specific fish/lighting conditions. Use this before each install or whenever lighting changes drastically.
-- `fish_tracker.py`: The primary Pi script. Handles camera setup, HSV masking, contour selection, debug overlays, and serial writes to the Arduino (default `/dev/ttyACM0`, 19200 baud).
-- `tracking_fish.py`: Earlier prototype that streams coordinates as `X=..,Y=..`. Useful reference if you need a simpler output format or a different baud rate (9600).
+### Prerequisites
 
-### Arduino motion control (`fishycode/arduino/motion_control.ino`)
-- Uses the standard Servo library to attach the steering servo on pin 14 and the ESC signal on pin 9.
-- Subscribes to serial messages formatted as `x,y`. The sketch trims input, validates the comma, then hands the parsed integers to `handleMovement`.
-- `handleMovement` determines the grid sector, translates that to forward/reverse throttle (`setDrivePower`) plus a discrete steering angle (`steerByColumn`). Movement logic currently favors constant-speed movements (`MOTOR_SPEED` = 40) with distinct rules for top/middle/bottom thirds of the frame.
-- `setDrivePower` clamps ±100% and linearly maps to ESC microseconds (1050–1950). This keeps output compatible with hobby ESCs expecting 1–2 ms pulses.
+**Hardware:**
+- Raspberry Pi 4/5 with Raspbian/Ubuntu
+- Arduino Uno with USB cable
+- USB webcam
+- Hokuyo UST-10LX LIDAR (Ethernet connection)
+- RC car chassis with servo and ESC
+- Fish tank with clear water and good lighting
 
-### Hardware tests (`fishycode/tests/`)
-- `servo_test.py` / `servo_test_updated.py`: Sends a `RUN` trigger, opens serial, and prints the Arduino responses so you can verify that the steering and ESC arming routine behave on the bench.
-- `motor_test.py`: Same idea but focused on throttle sweep sequences (neutral → forward power). Handy when validating ESC calibration or battery health.
-- `serial_*` helpers: Quick sanity checks to confirm the Pi can open the correct serial device in both directions.
+**Software:**
+```bash
+# Raspberry Pi
+sudo apt update
+sudo apt install python3-opencv python3-serial python3-numpy
 
-### Prototype Arduino sketches (`fishycode/misc/`)
-These sketches exist as historical bring-up utilities—sweeping servos, looping the motor in circles, or moving the chassis back and forth. They are a good starting point when swapping hardware (e.g., a different ESC) before flashing the full `motion_control.ino`.
+# Install LIDAR library
+pip3 install hokuyolx
+
+# Arduino IDE
+# Install from https://www.arduino.cc/en/software
+```
+
+### Installation
+
+1. **Clone Repository:**
+```bash
+git clone <repository-url>
+cd fish_car
+```
+
+2. **Configure LIDAR Network:**
+```bash
+# Set static IP for LIDAR connection
+# Edit /etc/network/interfaces or use NetworkManager
+# LIDAR default IP: 192.168.0.10
+```
+
+3. **Calibrate Fish Color:**
+```bash
+python3 fishycode/motion_tracking/color_selection.py
+```
+- Adjust HSV trackbars until only fish is visible in mask
+- Note the HSV values
+- Update `LOWER_HSV` and `UPPER_HSV` in [`fish_car_controller.py`](fishycode/fish_car_controller.py:30-32)
+
+4. **Flash Arduino:**
+- Open [`fish_car_smooth_control.ino`](fishycode/arduino/fish_car_smooth_control.ino) in Arduino IDE
+- Verify pin assignments match your hardware
+- Upload to Arduino Uno
+
+5. **Test Components:**
+```bash
+# Test LIDAR
+python3 fishycode/tests/lidar_test.py
+
+# Test servo (wheels off ground!)
+python3 fishycode/tests/servo_test.py
+
+# Test motor (wheels off ground!)
+python3 fishycode/tests/motor_test.py
+```
+
+### Running the System
+
+1. **Setup:**
+   - Mount camera directly above tank pointing down
+   - Ensure stable lighting (reduces HSV jitter)
+   - Place LIDAR facing forward on car
+   - Connect all hardware and power on
+
+2. **Start Control System:**
+```bash
+python3 fishycode/fish_car_controller.py
+```
+
+3. **Operation:**
+   - System initializes (camera, serial, LIDAR)
+   - Place fish in tank
+   - Car will follow fish movements
+   - Press 'q' to quit safely
 
 ---
 
-## Hardware integration notes
+## ⚙️ Configuration
 
-- **Servo (front wheels):** Responsible for lateral movement. Because steering is discrete in the firmware (left/center/right), align the horn mechanically so 90° equals straight wheels.
-- **Motor + ESC:** ESC interprets the PWM pulses from pin 9. Ensure the ESC is armed at neutral (≈1500 µs) before issuing throttle, as shown in `motor_test.ino` and the Python test clients.
-- **Receiver:** Acts as the power distribution board. It powers both the servo and the ESC/BEC, and the Arduino piggybacks on the receiver’s 5 V/GND rails so every signal shares a reference.
-- **Camera:** Place directly above the tank pointing down. Stable lighting reduces HSV jitter, which in turn keeps the car from twitching.
-- **Arduino vs. Pi:** The Pi does the high-level “where is the fish?” computation; the Arduino guarantees precise PWM without Linux jitter affecting the servo or ESC timing.
+### Camera Alignment ([`fish_car_controller.py`](fishycode/fish_car_controller.py:21-27))
+```python
+FLIP_X = False      # Mirror left/right if camera is reversed
+FLIP_Y = False      # Mirror up/down if camera is inverted
+ROTATE = 0          # Rotate 0/90/180/270 degrees
+X_OFFSET = 0        # Shift steering center (pixels)
+```
+
+### HSV Color Bounds ([`fish_car_controller.py`](fishycode/fish_car_controller.py:30-32))
+```python
+LOWER_HSV = np.array([22, 95, 169])   # Adjust for your fish
+UPPER_HSV = np.array([179, 255, 255])
+```
+
+### Safety Parameters ([`fish_car_controller.py`](fishycode/fish_car_controller.py:34-43))
+```python
+LIDAR_STOP_DISTANCE = 0.7        # Stop if obstacle within 0.7m
+LIDAR_FRONT_ANGLE_DEG = 30       # Check ±30° in front
+BOUNDING_BOX_RADIUS = 3.0        # Max 3m from start position
+BOUNDING_BOX_WARNING_RADIUS = 2.5 # Start slowing at 2.5m
+ENABLE_BOUNDING_BOX = True       # Enable/disable boundary
+```
+
+### Motion Parameters ([`fish_car_controller.py`](fishycode/fish_car_controller.py:45-50))
+```python
+SMOOTHING_FACTOR = 0.3           # Fish position smoothing (0-1)
+MIN_FISH_DETECTION_AREA = 100    # Min contour area (pixels²)
+LOOP_DELAY = 0.02                # 50Hz control loop
+```
+
+### Arduino Tuning ([`fish_car_smooth_control.ino`](fishycode/arduino/fish_car_smooth_control.ino:24-46))
+```cpp
+// Speed limits (percentage)
+MAX_MOTOR_SPEED = 7;        // Forward speed (safety limited)
+MAX_REV_SPEED = 20;         // Reverse speed
+MIN_MOTOR_SPEED = 6;        // Minimum to overcome friction
+
+// ESC calibration (measure with receiver)
+ESC_MIN  = 1064;  // Full reverse
+ESC_NEUT = 1388;  // Neutral/stopped
+ESC_MAX  = 1530;  // Full forward
+
+// Steering angles
+STEERING_CENTER = 90;
+STEERING_LEFT = 60;
+STEERING_RIGHT = 120;
+
+// Smoothing
+SPEED_SMOOTHING = 0.15;     // Lower = smoother
+STEERING_SMOOTHING = 0.20;
+```
 
 ---
 
-## Lidar integration (to be documented)
+## 🔧 Troubleshooting
 
-_TODO: Add wiring diagram, control strategy, and any supporting code for the lidar once Model 2 testing validates it._
+### Fish Not Detected
+- Run [`color_selection.py`](fishycode/motion_tracking/color_selection.py) to recalibrate HSV bounds
+- Check lighting conditions (avoid shadows, reflections)
+- Ensure camera is focused and clean
+- Verify `MIN_FISH_DETECTION_AREA` isn't too high
+
+### Car Not Moving
+- Check serial connection: `ls /dev/ttyACM*`
+- Verify ESC is armed (3-second delay in Arduino setup)
+- Test motor separately with [`motor_test.py`](fishycode/tests/motor_test.py)
+- Check battery voltage (LiPo should be >11V)
+- Verify ESC calibration values match your hardware
+
+### Jerky Movement
+- Increase `SMOOTHING_FACTOR` in Python (0.3 → 0.5)
+- Increase `SPEED_SMOOTHING` in Arduino (0.15 → 0.25)
+- Reduce `MAX_MOTOR_SPEED` for gentler acceleration
+- Check for camera frame drops (should be ~30 FPS)
+
+### LIDAR Not Working
+- Verify network connection: `ping 192.168.0.10`
+- Check LIDAR power and Ethernet cable
+- Run [`lidar_test.py`](fishycode/tests/lidar_test.py) for diagnostics
+- Ensure LIDAR IP matches `LIDAR_IP` in config
+
+### Boundary Not Working
+- Dead reckoning drifts over time (expected)
+- Reset by restarting the program
+- Adjust `BOUNDING_BOX_RADIUS` for your space
+- Disable if not needed: `ENABLE_BOUNDING_BOX = False`
 
 ---
 
-## Roadmap and Model 1
+## 📊 Performance Metrics
 
-This document covers Model 2, which is the current fish-controlled prototype. Model 1 (an earlier hardware stack) will be documented in this README once that version is ready to release so we can compare the two approaches.
+- **Control Loop**: 50 Hz (20ms per iteration)
+- **Camera**: 30 FPS @ 640×480
+- **LIDAR**: ~40 Hz scan rate
+- **Serial**: 19200 baud (sufficient for ~960 commands/sec)
+- **Latency**: ~50-100ms end-to-end (camera → Arduino → motion)
 
 ---
 
-## Recreating the project
+## 🛠️ Development Tools
 
-1. **Assemble hardware:** Mount camera, Pi, receiver, Arduino, ESC, servo, and DC motor onto the chassis. Verify the receiver distributes power (BEC) to both servo and ESC.
-2. **Calibrate the fish color:** Run `python fishycode/motion_tracking/color_selection.py` on the Pi, note the HSV values that best isolate the fish, and plug them into `fish_tracker.py`.
-3. **Flash the Arduino:** Upload `fishycode/arduino/motion_control.ino`. Confirm steering direction and ESC arming while the wheels are off the ground.
-4. **Test links:** Use the scripts in `fishycode/tests/` to make sure the Pi ↔ Arduino serial connection is stable and that servo/motor respond before introducing the fish.
-5. **Run the loop:** Start `python fishycode/motion_tracking/fish_tracker.py`, then place the fish in the tank. The Pi will stream positions, the Arduino will steer/throttle, and the car will mimic the fish’s heading in real time.
+### Test Scripts
+- [`lidar_test.py`](fishycode/tests/lidar_test.py) - Verify LIDAR connection and scan data
+- [`motor_test.py`](fishycode/tests/motor_test.py) - Test ESC response and calibration
+- [`servo_test.py`](fishycode/tests/servo_test.py) - Verify steering range
+- [`serial_com_from_pi.py`](fishycode/tests/serial_com_from_pi.py) - Test Pi → Arduino communication
+- [`serial_com_from_arduino.py`](fishycode/tests/serial_com_from_arduino.py) - Test Arduino → Pi communication
 
-With these pieces in place, the fish effectively “drives” the vehicle—the FOV responds to whichever direction the fish swims toward inside the tank.
+### Calibration Tools
+- [`color_selection.py`](fishycode/motion_tracking/color_selection.py) - Interactive HSV calibration
+- [`misc/calibration.ino`](fishycode/misc/calibration.ino) - ESC calibration routine
+- [`misc/servo_test.ino`](fishycode/misc/servo_test.ino) - Servo range finder
+
+### Debug Sketches
+- [`misc/motor_test.ino`](fishycode/misc/motor_test.ino) - Basic motor control
+- [`misc/backwards.ino`](fishycode/misc/backwards.ino) - Reverse motion test
+- [`misc/drive_circle.ino`](fishycode/misc/drive_circle.ino) - Circular motion test
+
+---
+
+## 🔐 Safety Features
+
+1. **Command Timeout**: Arduino stops if no command received for 1 second
+2. **LIDAR Obstacle Detection**: Stops if obstacle within 0.7m
+3. **Virtual Boundary**: Prevents car from traveling >3m from start
+4. **Speed Limiting**: Maximum 7% forward power for safety
+5. **Smooth Transitions**: Prevents sudden jerks that could damage hardware
+6. **Emergency Stop**: Press 'q' to safely shut down system
+
+---
+
+## 📝 Technical Notes
+
+### Why Arduino + Raspberry Pi?
+- **Pi**: High-level processing (OpenCV, LIDAR, safety logic)
+- **Arduino**: Deterministic PWM timing (no Linux jitter)
+- **Result**: Smooth servo/ESC control with intelligent decision-making
+
+### Dead Reckoning Limitations
+- Position estimate drifts over time (wheel slip, turning radius approximation)
+- Boundary enforcement is approximate, not GPS-accurate
+- Suitable for short-duration runs (<5 minutes)
+- Consider adding wheel encoders or IMU for better accuracy
+
+### ESC Behavior
+- Requires neutral pulse (1388 µs) for 3 seconds to arm
+- Forward/reverse transition requires brief neutral period
+- Different ESCs may have different calibration values
+- Measure your ESC's actual values with receiver before use
+
+---
+
+## 🚧 Future Enhancements
+
+- [ ] Add wheel encoders for accurate odometry
+- [ ] Implement IMU for heading correction
+- [ ] Add GPS for absolute positioning
+- [ ] Create web interface for remote monitoring
+- [ ] Add data logging for analysis
+- [ ] Support multiple fish (swarm behavior)
+- [ ] Add obstacle avoidance path planning
+- [ ] Implement PID control for smoother motion
+
+---
+
+## 📄 License
+
+This project is open source. Feel free to modify and adapt for your own fish-controlled vehicles!
+
+---
+
+## 🙏 Acknowledgments
+
+- OpenCV community for computer vision tools
+- Hokuyo for LIDAR hardware and Python library
+- Arduino community for servo/ESC control examples
+
+---
+
+## 📧 Support
+
+For issues, questions, or contributions, please open an issue in the repository.
+
+**Happy Fish Driving! 🐟🚗**
