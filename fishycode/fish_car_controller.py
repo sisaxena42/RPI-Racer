@@ -38,8 +38,8 @@ LIDAR_STOP_DISTANCE = 0.7  # meters
 LIDAR_FRONT_ANGLE_DEG = 30  # +/- degrees around center
 
 # Virtual Bounding Box Setup
-BOUNDING_BOX_RADIUS = 5.0  # meters - maximum distance from starting position
-BOUNDING_BOX_WARNING_RADIUS = 4.0  # meters - start slowing down
+BOUNDING_BOX_RADIUS = 3.0  # meters - maximum distance from starting position
+BOUNDING_BOX_WARNING_RADIUS = 2.5  # meters - start slowing down
 ENABLE_BOUNDING_BOX = True
 
 # Movement Smoothing
@@ -340,7 +340,23 @@ def main():
             # Update position estimate (simplified)
             dt = time.time() - last_time
             last_time = time.time()
-            # Note: Actual position tracking would need odometry or GPS
+            
+            # Extract speed and steering from command for position tracking
+            # Command format: "fish_x,fish_y,speed_factor,boundary_factor,obstacle"
+            # We need to estimate actual speed and steering angle from fish position
+            speed_estimate = 1.0 if fish_detected else 0.0  # meters per second (rough estimate)
+            # Apply speed factor from command
+            command_parts = command.strip().split(',')
+            if len(command_parts) >= 3:
+                speed_factor = float(command_parts[2])
+                speed_estimate *= speed_factor
+            
+            # Estimate steering angle from fish x position (0-180 degrees, 90 = straight)
+            # Map fish_x from 0-FRAME_WIDTH to steering angle 0-180
+            steering_angle = (fish_x / FRAME_WIDTH) * 180.0
+            
+            # Update position using dead reckoning
+            state.update_position(speed_estimate, steering_angle, dt)
             
             # Display status
             frame_count += 1
