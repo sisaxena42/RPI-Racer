@@ -19,8 +19,8 @@ FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
 
 # Camera alignment
-FLIP_X = True    # mirror left/right
-FLIP_Y = False     # mirror up/down
+FLIP_X = False    # mirror left/right
+FLIP_Y =False    # mirror up/down
 ROTATE = 0          # 0, 90, 180, 270 degrees
 
 # Steering alignment (pixels)
