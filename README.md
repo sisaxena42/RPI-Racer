@@ -1,3 +1,170 @@
+# RPI-Racer (Model 1)
+
+Model 1 of the RPI-Racer project is a foundational prototype used to validate Arduino-based control of an RC chassis using commands issued from a Raspberry Pi. This version focuses on **servo steering**, **motor + ESC throttle control**, and **stable serial communication** between the Pi and Arduino. Unlike Model 2, Model 1 does **not** include computer vision or fish tracking; all motion is triggered manually through Python scripts.
+
+Model 1 served as the hardware bring-up platform before integrating real-time vision and behavioral logic in later versions.
+
+---
+
+## System overview
+
+- **Arduino:** Receives `"RUN"` triggers from the Pi over USB serial. Runs simple motion sequences defined in test sketches (`servo_test.ino`, `motor_test.ino`).
+- **Servo:** Controls the front wheel steering. Connected to Arduino pin 14.
+- **Motor + ESC:** Controls vehicle drive. ESC signal line connected to Arduino pin 9.
+- **Receiver + Power:** Standard RC receiver distributes power to both the servo and ESC. The Arduino shares the 5V/GND rail to ensure common reference.
+- **Raspberry Pi:** Runs Python scripts in `fishycode/tests/` to send serial commands and validate behavior.
+
+All motion logic in Model 1 is hardcoded on the Arduino and triggered by the Pi.
+
+---
+
+## Repository layout
+```
+fishycode/
+├─ arduino/ → Core Arduino sketches (servo_test.ino, motor_test.ino)
+├─ tests/ → Python scripts to trigger Arduino movement via serial
+├─ motion_tracking/ → Placeholder; unused in Model 1
+└─ misc/ → Early sketches and bring-up utilities
+```
+
+---
+
+## Control loop (Model 1)
+
+1. **Flash Arduino with test sketch**  
+   Upload either `servo_test.ino` or `motor_test.ino` using the Arduino IDE.
+
+2. **Run Python trigger script**  
+   Execute `servo_test.py` or `motor_test.py` on the Raspberry Pi. This opens a serial connection and sends `"RUN\n"`.
+
+3. **Arduino executes motion sequence**  
+   The sketch checks for `"RUN"` and runs the corresponding servo sweep or throttle sequence once.
+
+4. **Car moves and stops**  
+   After completing the motion, the Arduino prints `"Done"` and halts further movement.
+
+---
+
+## Software modules
+
+### Arduino sketches (`fishycode/arduino/`)
+
+#### `servo_test.ino`
+- Sweeps the steering servo through a fixed pattern (e.g. left → center → right → center).
+- Uses:
+  - `Servo` library
+  - `Serial.readStringUntil('\n')`
+  - `hasRun` flag to prevent repeat execution
+
+#### `motor_test.ino`
+- Sends incremental throttle commands to the ESC.
+- Used for:
+  - ESC arming verification
+  - Battery validation
+  - Motor direction testing
+
+Both sketches operate at **19200 baud**.
+
+---
+
+### Python test scripts (`fishycode/tests/`)
+
+#### `servo_test.py`
+- Opens serial connection to `/dev/ttyACM0`
+- Sends `"RUN\n"`
+- Prints Arduino responses (e.g. `"Done"`)
+- Used to validate steering control from the Pi
+
+#### `motor_test.py`
+- Same structure as `servo_test.py`
+- Focused on throttle control and ESC behavior
+
+All scripts include:
+- `time.sleep(2)` to allow Arduino reset
+- Safe `try/finally` cleanup for serial port handling
+
+---
+
+## Hardware integration notes
+
+### Servo (front steering)
+- Mounted on front knuckles with standard horn
+- Must be mechanically centered at 90°
+- Typical operating range: ~60° (full left) to ~120° (full right)
+
+### Motor + ESC
+- ESC signal connected to Arduino pin 9
+- PWM range:
+  - ~1050 µs → full reverse
+  - ~1500 µs → neutral
+  - ~1950 µs → full forward
+- ESC must be armed at neutral before motion
+
+### Receiver + power
+- Receiver powers both servo and ESC (via BEC)
+- Arduino shares the 5V/GND rail for consistent reference
+- Raspberry Pi does **not** power motors or servos
+
+### Raspberry Pi serial
+- Typical port: `/dev/ttyACM0`
+- May switch to `/dev/ttyACM1` after upload due to USB re-enumeration
+- Use `/dev/serial/by-id/` for stable device naming if needed
+
+---
+
+## Known limitations
+
+- No real-time decision making
+- All motion is discrete and scripted
+- USB port may reset after sketch upload
+- Requires external power for servo/motor (Pi cannot supply enough current)
+
+---
+
+## Purpose of Model 1
+
+Model 1 exists to:
+
+- Validate wiring and power distribution
+- Confirm ESC calibration and throttle response
+- Confirm servo range and steering geometry
+- Debug Pi ↔ Arduino serial reliability
+- Provide a safe environment for hardware bring-up
+
+All higher-level intelligence is intentionally excluded.
+
+---
+
+## Transition to Model 2
+
+Model 2 builds directly on Model 1 by adding:
+
+- Camera + overhead mounting
+- HSV color tracking of fish
+- Real-time coordinate streaming
+- Region-based behavioral logic
+- Smooth steering and throttle transitions
+
+Model 1 remains useful for:
+- Regression testing
+- Hardware swaps
+- Demonstrations without live fish
+- ESC and servo calibration
+
+---
+
+## Recreating Model 1
+
+1. Mount servo, ESC, motor, receiver, and Arduino on chassis
+2. Connect servo to pin 14, ESC signal to pin 9
+3. Upload `servo_test.ino` or `motor_test.ino`
+4. Power receiver with RC battery
+5. Run `python fishycode/tests/servo_test.py` on the Pi
+6. Observe movement and adjust hardware alignment as needed
+
+Once all systems behave correctly, proceed to Model 2 for full fish-operated control.
+
+
 # RPI-Racer (Model 2)
 
 The Fish Operated Vehicle (FOV) is an RC chassis that lets a live fish “drive” the car. A camera mounted above the tank tracks the fish, a Raspberry Pi translates the motion into steering/throttle commands, and an Arduino pushes those commands to the servo and motor/ESC combo. Model 2 (this repo) is the current working build; Model 1 will be documented when that variant is ready.
